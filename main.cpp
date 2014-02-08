@@ -10,6 +10,7 @@
 #include <arpa/inet.h> // inet_pton
 #include <unistd.h> // close()
 #include "httpParser.h"
+#include "httpMsg.h"
 using namespace std;
 #define PR(x) cout << #x " = " << x << "\n";
 
@@ -119,7 +120,7 @@ int accept_connection(int server_fd){
 	printf("server: got connection from %s\n", s);
 	// Setting Timeout
 	struct timeval tv;
-	tv.tv_sec = 30;  /* 30 Secs Timeout */
+	tv.tv_sec = 10;  /* 30 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 	setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 	return client_fd;
@@ -143,7 +144,7 @@ int make_client_connection (const char *host, const char *port)
   hints.ai_socktype = SOCK_STREAM;
 
   //fprintf(stderr, "%s %s\n", host, port);
-  PR(host) PR(port)
+
   int addr_status = getaddrinfo(host, port, &hints, &res);
   if (addr_status != 0)
   {
@@ -252,6 +253,7 @@ void handleRequest(int in_fd){
 	while((bytesRead = recv(in_fd,buf,10000,0)) >0){
 		string curMsg = string(buf,buf+bytesRead);
 		requestMsg +=curMsg;
+		cout<<curMsg;
 		int pos;
 		if((pos = requestMsg.find("\r\n\r\n")) !=  string::npos ){
 			requestMsg = requestMsg.substr(0,pos+4);
@@ -260,12 +262,24 @@ void handleRequest(int in_fd){
 		}
 
 	}
-	PR(requestMsg);
 
+	if(requestMsg.size() == 0){
+		fprintf(stderr,"%s\n","Request Msg size is 0");
+		close(in_fd);
+		return;
+	}
 
+	cout<<endl<<endl;
 	httpParser parser;
 	const char *ptr = requestMsg.c_str();
-	parser.parseHeaders(ptr,requestMsg.size());
+	int pstatus = parser.parseHeaders(ptr,requestMsg.size());
+	if(pstatus<0){
+		//send wrong message format error;
+		fprintf(stderr,"%s\n","BAD REQ");
+		send_all(in_fd,BAD_REQUEST,strlen(BAD_REQUEST));
+		close(in_fd);
+		return;
+	}
 	string contentlen = "Content-Length";
 	string contentlenval = parser.findHeader(contentlen);
 	if(contentlenval != ""){
@@ -280,7 +294,8 @@ void handleRequest(int in_fd){
 			len-=bytesRead;
 		}
 	}
-	PR(remaining);
+	cout<<"Remaining"<<endl;
+	cout<<remaining<<endl;
 	parser.setMessageBody(remaining);
 	if(parser.getMethod() == GET){
 		string temp = "Host";
@@ -290,13 +305,14 @@ void handleRequest(int in_fd){
 		cout<<"request sent"<<endl;
 		string response;
 		get_data_from_host(clientfd,response);
-		PR(response);
+
 		const char *res = response.c_str();
 		send_all(in_fd,res,response.size());
 		close(in_fd);
 		close(clientfd);
 	}else{
 		fprintf(stderr,"%s\n","NOT IMPLEMENTED");
+		send_all(in_fd,NOT_IMPLEMENTED,strlen(NOT_IMPLEMENTED));
 		close(in_fd);
 		// send message that its not implemented.
 	}

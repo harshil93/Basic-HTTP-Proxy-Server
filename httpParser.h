@@ -54,7 +54,7 @@ public:
 	int method;
 	string requestURI;
 	httpParser();
-	const char *parseHeaders(const char *buffer, size_t size);
+	const int parseHeaders(const char *buffer, size_t size);
 	size_t getTotalLength();
 	char *formatHeaders(char *buffer);
 	void addHeader(string &key, string &value);

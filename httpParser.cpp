@@ -35,13 +35,15 @@ static inline std::string &trim(std::string &s) {
 httpParser::httpParser ()
 {
 }
-  
-const char* httpParser::parseHeaders (const char *buffer, size_t size)
+
+const int httpParser::parseHeaders (const char *buffer, size_t size)
 {
-	const char *curPos = buffer;
+  const char *curPos = buffer;
   string key;
   string value;
+  cout<<"-           - - -- - - BUFFER"<<endl;
 
+  PR(buffer)
   //Checking for method
   char *end = (char *)memmem (curPos, size - (curPos-buffer), "\r\n", 2);
   if(end ==0 ){
@@ -66,7 +68,8 @@ const char* httpParser::parseHeaders (const char *buffer, size_t size)
   }else if(token== "HEAD"){
     method = HEAD;
   }else{
-    throw ParseException("Unknown Method or Improper msg format");
+	cerr<<"Unknown Method or Improper msg format"<<endl;
+	return -1;
   }
   ss>>token;
   requestURI = token;
@@ -79,13 +82,19 @@ const char* httpParser::parseHeaders (const char *buffer, size_t size)
       char *endline = (char *)memmem (curPos, size - (curPos-buffer), "\r\n", 2);
       if (endline == 0)
         {
-          throw ParseException ("Header line does end with \\r\\n");
+    	  cerr<<"Header line does end with \\r\\n"<<endl;
+    	  	return -1;
+
         }
       
       if (*curPos == ' ' || *curPos == '\t') // multi-line header
         {
           if (key == "")
-            throw ParseException ("Multi-line header without actual header");
+          {
+        	  cerr<<"Multi-line header without actual header"<<endl;
+        	      	  	return -1;
+          }
+
 
           
           string newline (curPos, endline-curPos);
@@ -101,7 +110,9 @@ const char* httpParser::parseHeaders (const char *buffer, size_t size)
 
           if (header_key == 0)
             {
-              throw ParseException ("HTTP header doesn't contain ':'");
+        	  cerr<<"HTTP header doesn't contain ':'"<<endl;
+        	  return -1;
+
             }
 
           key = string (curPos, header_key-curPos);
@@ -123,12 +134,16 @@ const char* httpParser::parseHeaders (const char *buffer, size_t size)
     }
   else
     {
-      throw ParseException ("Parsed buffer does not contain \\r\\n");
+	  cerr<<"Parsed buffer does not contain \\r\\n"<<endl;
+	          	  return -1;
+
     }
 
     // modifying request URI a/c to the speciations and adding host header if necessary
   string host = "Host";
   string http = "http://";
+  string https = "www";
+  PR(requestURI)
   if(requestURI[0] == '/' && httpParser::findHeader(host) != "" ){
     //everything is fine
   }else if(requestURI.compare(0,http.size(),http) == 0){
@@ -136,12 +151,13 @@ const char* httpParser::parseHeaders (const char *buffer, size_t size)
 	  int pos = requestURI.find("/");
 	  int lenofhost = pos;
 	  string hostHeader = requestURI.substr(0,lenofhost);
+	  PR(hostHeader)
 	  requestURI = requestURI.substr(pos);
+	  PR(requestURI)
 	  modifyHeader(host,hostHeader);
-  }else{
-	  throw ParseException("requestURI not in proper format");
   }
-  return curPos;
+
+  return 0;
 }
 
 size_t
