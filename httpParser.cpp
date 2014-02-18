@@ -142,19 +142,23 @@ const int httpParser::parseHeaders (const char *buffer, size_t size)
     // modifying request URI a/c to the speciations and adding host header if necessary
   string host = "Host";
   string http = "http://";
-  string https = "www";
-  PR(requestURI)
+
   if(requestURI[0] == '/' && httpParser::findHeader(host) != "" ){
     //everything is fine
-  }else if(requestURI.compare(0,http.size(),http) == 0){
-	  requestURI = requestURI.substr(http.size());
-	  int pos = requestURI.find("/");
-	  int lenofhost = pos;
-	  string hostHeader = requestURI.substr(0,lenofhost);
-	  PR(hostHeader)
-	  requestURI = requestURI.substr(pos);
-	  PR(requestURI)
-	  modifyHeader(host,hostHeader);
+  }else {
+	  string requestURIcmp = requestURI.substr(0,http.size());
+	  std::transform(requestURIcmp.begin(), requestURIcmp.end(), requestURIcmp.begin(), ::tolower);
+	  if(requestURIcmp.compare(0,http.size(),http) == 0){
+		  requestURI = requestURI.substr(http.size());
+		  	  int pos = requestURI.find("/");
+		  	  int lenofhost = pos;
+		  	  string hostHeader = requestURI.substr(0,lenofhost);
+		  	  PR(hostHeader)
+		  	  requestURI = requestURI.substr(pos);
+		  	  PR(requestURI)
+		  	  modifyHeader(host,hostHeader);
+	  }
+
   }
 
   return 0;

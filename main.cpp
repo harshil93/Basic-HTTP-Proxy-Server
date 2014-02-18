@@ -9,8 +9,10 @@
 #include <netdb.h>
 #include <arpa/inet.h> // inet_pton
 #include <unistd.h> // close()
+#include <errno.h>
 #include "httpParser.h"
 #include "httpMsg.h"
+
 using namespace std;
 #define PR(x) cout << #x " = " << x << "\n";
 
@@ -195,12 +197,26 @@ int make_client_connection (const char *host, const char *port)
   return sock_fd;
 }
 
+
+int send_all(int socket,const void *buffer, size_t length) {
+    size_t i = 0;
+    for (i = 0; i < length;){
+    	int bytesSent = send(socket, buffer, length - i,0);
+    	if(bytesSent!=-1){
+    		return errno;
+    	}else{
+    		i+=bytesSent;
+    	}
+    }
+    return 0;
+}
+
 /**
  * @brief Gets all data from remote host
  * @returns 0 on success, <0 on failure
  * @param result The string that the data is appended to
  */
-int get_data_from_host (int remote_fd, string &result)
+int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sendfd)
 {
   // Loop until we get the last segment? packet?
   for (;;)
@@ -209,6 +225,7 @@ int get_data_from_host (int remote_fd, string &result)
 
     // Get data from remote
     int num_recv = recv(remote_fd, res_buf, sizeof(res_buf), 0);
+
     if (num_recv < 0)
     {
       perror("recv");
@@ -216,18 +233,22 @@ int get_data_from_host (int remote_fd, string &result)
     }
 
     // If we didn't recieve anything, we hit the end
+
     else if (num_recv == 0)
       break;
 
     // Append the buffer to the response if we got something
-    result.append(res_buf, num_recv);
+    if(send_all(sendfd,res_buf,num_recv) !=0){
+    	cout<<errno<<endl;
+    	close(sendfd);
+    	close(remote_fd);
+    	return errno;
+    }
+
   }
   return 0;
 }
-void send_all(int socket,const void *buffer, size_t length) {
-    size_t i = 0;
-    for (i = 0; i < length; i += send(socket, buffer, length - i,0));
-}
+
 int sendRequest(int clientfd, httpParser &parser){
 	string requestMsg = "";
 	switch(parser.getMethod()){
@@ -253,7 +274,7 @@ void handleRequest(int in_fd){
 	while((bytesRead = recv(in_fd,buf,10000,0)) >0){
 		string curMsg = string(buf,buf+bytesRead);
 		requestMsg +=curMsg;
-		cout<<curMsg;
+
 		int pos;
 		if((pos = requestMsg.find("\r\n\r\n")) !=  string::npos ){
 			requestMsg = requestMsg.substr(0,pos+4);
@@ -269,7 +290,6 @@ void handleRequest(int in_fd){
 		return;
 	}
 
-	cout<<endl<<endl;
 	httpParser parser;
 	const char *ptr = requestMsg.c_str();
 	int pstatus = parser.parseHeaders(ptr,requestMsg.size());
@@ -283,7 +303,6 @@ void handleRequest(int in_fd){
 	string contentlen = "Content-Length";
 	string contentlenval = parser.findHeader(contentlen);
 	if(contentlenval != ""){
-		cout<<"Content Header Len = "<<contentlenval<<endl;
 		// receive the body of the message
 		int len = atoi(contentlenval.c_str());
 		len -= remaining.size();
@@ -294,20 +313,16 @@ void handleRequest(int in_fd){
 			len-=bytesRead;
 		}
 	}
-	cout<<"Remaining"<<endl;
-	cout<<remaining<<endl;
+
 	parser.setMessageBody(remaining);
 	if(parser.getMethod() == GET){
 		string temp = "Host";
 		const char *host = parser.findHeader(temp).c_str();
+		PR(host)
 		int clientfd = make_client_connection(host,REMOTE_SERVER_PORT);
 		sendRequest(clientfd,parser);
-		cout<<"request sent"<<endl;
 		string response;
-		get_data_from_host(clientfd,response);
-
-		const char *res = response.c_str();
-		send_all(in_fd,res,response.size());
+		get_data_from_host_and_send_to_client(clientfd,response,in_fd);
 		close(in_fd);
 		close(clientfd);
 	}else{
