@@ -122,7 +122,7 @@ int accept_connection(int server_fd){
 	printf("server: got connection from %s\n", s);
 	// Setting Timeout
 	struct timeval tv;
-	tv.tv_sec = 10;  /* 30 Secs Timeout */
+	tv.tv_sec = 15;  /* 15 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 	setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 	return client_fd;
@@ -146,11 +146,10 @@ int make_client_connection (const char *host, const char *port)
   hints.ai_socktype = SOCK_STREAM;
 
   //fprintf(stderr, "%s %s\n", host, port);
-
   int addr_status = getaddrinfo(host, port, &hints, &res);
   if (addr_status != 0)
   {
-    fprintf(stderr, "Cannot get info\n");
+    fprintf(stderr, "Cannot c info\n");
     return -1;
   }
 
@@ -201,8 +200,8 @@ int make_client_connection (const char *host, const char *port)
 int send_all(int socket,const void *buffer, size_t length) {
     size_t i = 0;
     for (i = 0; i < length;){
-    	int bytesSent = send(socket, buffer, length - i,0);
-    	if(bytesSent!=-1){
+    	int bytesSent = send(socket, buffer, length - i,MSG_NOSIGNAL);
+    	if(bytesSent==-1){
     		return errno;
     	}else{
     		i+=bytesSent;
@@ -224,11 +223,12 @@ int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sen
     char res_buf[BUFSIZE];
 
     // Get data from remote
-    int num_recv = recv(remote_fd, res_buf, sizeof(res_buf), 0);
 
+    int num_recv = recv(remote_fd, res_buf, sizeof(res_buf), 0);
     if (num_recv < 0)
     {
       perror("recv");
+      cout<<"error"<<endl;
       return -1;
     }
 
@@ -236,16 +236,19 @@ int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sen
 
     else if (num_recv == 0)
       break;
-
     // Append the buffer to the response if we got something
+    result+= string(res_buf,res_buf+num_recv);
     if(send_all(sendfd,res_buf,num_recv) !=0){
-    	cout<<errno<<endl;
+    	cerr<<"Error No = "<<errno<<endl;
     	close(sendfd);
     	close(remote_fd);
     	return errno;
     }
 
   }
+
+  close(sendfd);
+  close(remote_fd);
   return 0;
 }
 
@@ -318,13 +321,17 @@ void handleRequest(int in_fd){
 	if(parser.getMethod() == GET){
 		string temp = "Host";
 		const char *host = parser.findHeader(temp).c_str();
-		PR(host)
 		int clientfd = make_client_connection(host,REMOTE_SERVER_PORT);
+		if(clientfd == -1){
+			close(in_fd);
+			close(clientfd);
+			return ;
+		}
 		sendRequest(clientfd,parser);
 		string response;
 		get_data_from_host_and_send_to_client(clientfd,response,in_fd);
-		close(in_fd);
-		close(clientfd);
+
+
 	}else{
 		fprintf(stderr,"%s\n","NOT IMPLEMENTED");
 		send_all(in_fd,NOT_IMPLEMENTED,strlen(NOT_IMPLEMENTED));
@@ -355,7 +362,7 @@ int main(int argc, char **argv){
 		if((in_fd = accept_connection(server_fd)) <0){
 			fprintf(stderr, "%s\n", "Error Accepting Connections");
 		}else{
-			cout<<"Handling Request "<<in_fd<<endl;
+			cout<<"Handling Request "<<endl;
 			handleRequest(in_fd);
 		}
 

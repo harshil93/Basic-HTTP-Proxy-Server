@@ -12,7 +12,7 @@
 #include <iostream>
 #include <sstream>
 
-#define PR(x) cout<< #x <<" = "<<x<<endl;
+
 using namespace std;
 
 static inline std::string &ltrim(std::string &s) {
@@ -41,13 +41,12 @@ const int httpParser::parseHeaders (const char *buffer, size_t size)
   const char *curPos = buffer;
   string key;
   string value;
-  cout<<"-           - - -- - - BUFFER"<<endl;
 
-  PR(buffer)
   //Checking for method
   char *end = (char *)memmem (curPos, size - (curPos-buffer), "\r\n", 2);
   if(end ==0 ){
-    throw ParseException("Request Line Doesnt end with \\r\\n");
+    cerr<<"Request Line Doesnt end with \\r\\n"<<endl;
+    return -1;
   }
   string requestLine(curPos,end - curPos);
   stringstream ss(requestLine);
@@ -153,9 +152,7 @@ const int httpParser::parseHeaders (const char *buffer, size_t size)
 		  	  int pos = requestURI.find("/");
 		  	  int lenofhost = pos;
 		  	  string hostHeader = requestURI.substr(0,lenofhost);
-		  	  PR(hostHeader)
 		  	  requestURI = requestURI.substr(pos);
-		  	  PR(requestURI)
 		  	  modifyHeader(host,hostHeader);
 	  }
 
@@ -228,6 +225,7 @@ httpParser::findHeader (std::string &key)
 }
 
 void httpParser::print(){
+	cout<<"------HEADERS------"<<endl;
   for (std::list<httpHeader>::iterator header = listHeader.begin ();
        header != listHeader.end ();
        header++){
