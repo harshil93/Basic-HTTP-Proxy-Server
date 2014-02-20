@@ -37,7 +37,7 @@ except ImportError:
 # produce unexpected results, including the abnormal termination
 # of the testing script.
 # 
-pub_urls = ['http://intranet.iitg.ernet.in/','httP://127.0.0.1/acads/asd.html','http://127.0.0.1/acads/redirect.php'] 
+pub_urls = ['http://intranet.iitg.ernet.in/','httP://127.0.0.1/acads/asd.html','http://127.0.0.1/acads/redirect.php','http://jatinga.iitg.ernet.in/cseintranet/'] 
 
 
 # timeout_secs - Individual tests will be killed if they do not

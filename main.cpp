@@ -11,20 +11,21 @@
 #include <unistd.h> // close()
 #include <errno.h>
 #include "httpParser.h"
-#include "httpMsg.h"
-
+#include "httpMsg.h" // error messages
 using namespace std;
-#define PR(x) cout << #x " = " << x << "\n";
 
-#define REMOTE_SERVER_PORT "80"
-#define BACKLOG 100
-#define BUFSIZE 2048
+#define PR(x) cout << #x " = " << x << "\n"; // for debugging purposes
 
-/*
-* server_listen - bind to the supplied port and listen
-* port is a string
-* returns the fd if no error otherwise <0 value which indicates error
-*/
+#define REMOTE_SERVER_PORT "80" // default remote server port
+#define BACKLOG 100             // No. of backlog reqeusts
+#define BUFSIZE 2048			// BufferSize
+
+
+/**
+ * server_listen - bind to the supplied port and listen
+ * @param  char* port - a string
+ * @return the fd if no error otherwise <0 value which indicates error
+ */
 int server_listen(char *port){
 
 	// Create address structs
@@ -96,6 +97,11 @@ int server_listen(char *port){
 
 	return sock_fd;
 }
+
+/**
+ * A function wrapper to wrap both IPv4 and IPv6
+ * @param  struct sockaddr *sa
+ */
 void *get_in_addr (struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -104,6 +110,12 @@ void *get_in_addr (struct sockaddr *sa)
 
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
+/**
+ * Accepts a client connection. The server fd is passed as a para
+ * @param  server_fd
+ * @return client_fd
+ */
 int accept_connection(int server_fd){
 	struct sockaddr_storage their_addr; // connector's address information
 	char s[INET6_ADDRSTRLEN];
@@ -122,16 +134,16 @@ int accept_connection(int server_fd){
 	printf("server: got connection from %s\n", s);
 	// Setting Timeout
 	struct timeval tv;
-	tv.tv_sec = 15;  /* 15 Secs Timeout */
+	tv.tv_sec = 120;  /* 15 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 	setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
 	return client_fd;
 }
-// get sockaddr, IPv4 or IPv6:
-
 
 /**
- * @brief Creates socket, connects to remote host
+ * Creates socket, connects to remote host
+ * @param const char *host  - Host's domain name or IP address 
+ * @param const char *port - The port to which we have to make connection. 
  * @returns fd of socket, <0 if error
  */
 int make_client_connection (const char *host, const char *port)
@@ -149,7 +161,7 @@ int make_client_connection (const char *host, const char *port)
   int addr_status = getaddrinfo(host, port, &hints, &res);
   if (addr_status != 0)
   {
-    fprintf(stderr, "Cannot c info\n");
+    fprintf(stderr, "Cannot get address info\n");
     return -1;
   }
 
@@ -196,7 +208,13 @@ int make_client_connection (const char *host, const char *port)
   return sock_fd;
 }
 
-
+/**
+ * A wrapper function on send() socket all which tries to send all the data that is in the buffer
+ * @param  int socket
+ * @param  const void *buffer
+ * @param  size_t length
+ * @return
+ */
 int send_all(int socket,const void *buffer, size_t length) {
     size_t i = 0;
     for (i = 0; i < length;){
@@ -211,9 +229,11 @@ int send_all(int socket,const void *buffer, size_t length) {
 }
 
 /**
- * @brief Gets all data from remote host
+ * Gets all data from remote host and forwards it to the client
+ * @param int remote_fd - the remote fd from which we have to fetch data
+ * @param string result -  the received data is also stored in result
+ * @param int sendfd - the fd of the original client to which the data is to be forwarded
  * @returns 0 on success, <0 on failure
- * @param result The string that the data is appended to
  */
 int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sendfd)
 {
@@ -239,7 +259,7 @@ int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sen
     // Append the buffer to the response if we got something
     result+= string(res_buf,res_buf+num_recv);
     if(send_all(sendfd,res_buf,num_recv) !=0){
-    	cerr<<"Error No = "<<errno<<endl;
+    	//cerr<<"Error No = "<<errno<<endl;
     	close(sendfd);
     	close(remote_fd);
     	return errno;
@@ -252,7 +272,13 @@ int get_data_from_host_and_send_to_client (int remote_fd, string &result,int sen
   return 0;
 }
 
-int sendRequest(int clientfd, httpParser &parser){
+/**
+ * Creates a request using the httpParser Object and sends it to clientfd
+ * @param  int fd - socket descriptor
+ * @param  httpParser parser - the httpParser object containing info regarding the request
+ * @return 0 on success and errno in case of error
+ */
+int sendRequest(int fd, httpParser &parser){
 	string requestMsg = "";
 	switch(parser.getMethod()){
 		case GET:
@@ -264,11 +290,19 @@ int sendRequest(int clientfd, httpParser &parser){
 	requestMsg+= parser.getAllHeadersFormatted();
 	requestMsg+= "\r\n" + parser.getMessageBody();
 	const char *msg = requestMsg.c_str();
-	send_all(clientfd,msg,requestMsg.size());
+	if(send_all(fd,msg,requestMsg.size()) !=0){
+		close(fd);
+		return errno;
+	}
 	return 0;
 
 }
 
+/**
+ * handle Request handles the incoming requests specified by the in_fd socket descriptor
+ * It reads the total request and appropriate creates the httpParser Object which can be used later for different purposes
+ * @param int in_fd
+ */
 void handleRequest(int in_fd){
 	char buf[10001];
 	int bytesRead=0;
@@ -292,10 +326,12 @@ void handleRequest(int in_fd){
 		close(in_fd);
 		return;
 	}
-
+	cout<<requestMsg<<endl;
 	httpParser parser;
 	const char *ptr = requestMsg.c_str();
+
 	int pstatus = parser.parseHeaders(ptr,requestMsg.size());
+	
 	if(pstatus<0){
 		//send wrong message format error;
 		fprintf(stderr,"%s\n","BAD REQ");
@@ -320,7 +356,15 @@ void handleRequest(int in_fd){
 	parser.setMessageBody(remaining);
 	if(parser.getMethod() == GET){
 		string temp = "Host";
-		const char *host = parser.findHeader(temp).c_str();
+		string hoststr = parser.findHeader(temp);
+		const char *host = hoststr.c_str();
+		if(host==NULL || parser.findHeader(temp)==""){
+			fprintf(stderr,"%s\n","BAD REQ");
+			send_all(in_fd,BAD_REQUEST,strlen(BAD_REQUEST));
+			close(in_fd);
+			return;
+		}
+
 		int clientfd = make_client_connection(host,REMOTE_SERVER_PORT);
 		if(clientfd == -1){
 			close(in_fd);
